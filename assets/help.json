@@ -1,0 +1,54 @@
+[
+    {
+        "category": "moderation", 
+        "emoji": "🧱", 
+        "commands": [
+            {
+                "command": "%prefix%clear, \n%prefix%delete ", 
+                "desc": "Delete messages from the current channel."
+            }
+        ]
+    }, 
+    {
+        "category": "music", 
+        "emoji": "🎶", 
+        "commands": [
+            {
+                "command": "%prefix%play <title / url>", 
+                "desc": "Play a music or playlist from YouTube or Spotify,\n  searching by title or url."
+            }, 
+            {
+                "command": "%prefix%stop", 
+                "desc": "Stop playing."
+            }, 
+            {
+                "command": "%prefix%pause", 
+                "desc": "Pause."
+            }, 
+            {
+                "command": "%prefix%lyric <song>, \n%prefix%lyr <song>", 
+                "desc": "Recover the lyrics of a song. If you provide no arguments,\n  Hanna will look for the lyrics of the current playing song."
+            }
+        ]
+    }, 
+    {
+        "category": "utils", 
+        "emoji": "🧭", 
+        "commands": [
+            {
+                "command": "%prefix%ping, \n%prefix%latency", 
+                "desc": "Show bot's latency."
+            }
+        ]
+    }, 
+    {
+        "category": "fun", 
+        "emoji": "🕹️", 
+        "commands": [
+            {
+                "command": "%prefix%gen <animal>, \n%prefix%generate <animal>, \n%prefix%create <animal>", 
+                "desc": "Give you a cute surprise.Replace \"<animal>\"\n  by \"cat\",  \"dog\" or \"fox\"."
+            }
+        ]
+    }
+]

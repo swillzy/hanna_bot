@@ -1,0 +1,7 @@
+node_modules
+package-lock.json
+.env
+yarn.lock
+assets/album.json
+assets/data.json
+assets/spotify.json
