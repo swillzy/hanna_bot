@@ -287,6 +287,11 @@ hanna.on('message', msg => {
         } else {
             msg.reply("Hanna isn't playing on this server...");
         }
+    } else if (['shuffle', 'ramdom', 'randomize', 'rdm'].includes(cmd)) {
+        let q = hanna.queues.get(msg.guild.id);
+        if (!q) return;
+
+        shuffle(q.songs);
     } else {
         sendHelp(msg, cmd, null);
     }
@@ -294,6 +299,26 @@ hanna.on('message', msg => {
 
 function numberSeparator(x) {
     return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+function shuffle(array, playingIndex = 0) {
+    var currentIndex = array.length, temporaryValue, randomIndex, currentPlaying = array[playingIndex];
+    while (0 !== currentIndex) {
+        randomIndex = Math.floor(Math.random() * currentIndex);
+        currentIndex -= 1;
+
+        temporaryValue = array[currentIndex];
+        array[currentIndex] = array[randomIndex];
+        array[randomIndex] = temporaryValue;
+    }
+
+    // Keep the current playing song alwways on the same position in array
+    let currentPlayingLocation = array.indexOf(currentPlaying);
+    let aux = array[playingIndex];
+    array[playingIndex] = array[currentPlayingLocation];
+    array[currentPlayingLocation] = aux;
+
+    return array;
 }
 
 async function sendHelp(msg, command = null, category = null) {
@@ -418,25 +443,35 @@ async function getLyrics(msg, query) {
         return;
     }
     const desc = `<@${msg.author.id}>\n\n${lrc.lyric.trim()}`;
+    const charLimit = 2000;
+    let lyricEmbeds = [];
 
-    // let rg = /\n\s*\n/gi, result, oc = [];
-    // while ( (result = rg.exec(desc))) {
-    //     oc.push(result.index);
-    // }
+    let rg = /\n\s*\n/gi
+    let oc = desc.split(rg);
 
-    // oc = oc.filter(function (i) {
-    //     return i < 2000; 
-    // });
+    let c = 0;
+    oc.map((ele, index) => {
+        ele = '\n\n' + ele;
+        if (index == 0) {
+            lyricEmbeds.push(ele);
+        } else if (lyricEmbeds[c].length + ele.length + 50 > charLimit) {
+            lyricEmbeds.push(ele);
+            c++;
+        } else {
+            lyricEmbeds[c] += ele
+        }
+    });
 
-    msg.channel.startTyping();
-    const embed = new Discord.MessageEmbed()
-        .setColor(colors.primary)
-        .setTitle(`${lrc.track}`)
-        .setAuthor(hanna.user.username, hanna.user.avatarURL().toString(), hanna.user.avatarURL().toString())
-        .setDescription(desc.length > 2000 ? desc.substr(0, 2000) : desc)
-    //.setDescription(desc.length > 2000 ? desc.substr(0, Math.max.apply(...oc)) : desc)
-    msg.channel.send(embed);
-    msg.channel.stopTyping();
+    lyricEmbeds.map((ele, index) => {
+        msg.channel.startTyping();
+        const embed = new Discord.MessageEmbed()
+            .setColor(colors.primary)
+            .setTitle(`${index != 0 ? '' : lrc.track}`)
+            .setAuthor(index != 0 ? '' : hanna.user.username, index != 0 ? '' : hanna.user.avatarURL().toString(), index != 0 ? '' : hanna.user.avatarURL().toString())
+            .setDescription(`${ele}${lyricEmbeds.length == 1 ? '' : '\n\n█████████████████ Part ' + (index + 1) + ' out of ' + lyricEmbeds.length + ' █████████████████'}`)
+        msg.channel.send(embed);
+        msg.channel.stopTyping();
+    });
 }
 
 hanna.login(process.env.CLIENT_TOKEN);
