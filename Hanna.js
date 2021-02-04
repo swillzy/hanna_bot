@@ -4,8 +4,8 @@ const fs = require('fs');
 require('dotenv').config();
 const youtubeSearch = require('yt-search');
 const ytdl = require('ytdl-core-discord');
-const lyrics = require('./cogs/lyrics');
-const spotifyTracker = require('./cogs/spotifyTracker');
+const lyrics = require('./cmd/utils/lyricsScrapper');
+const spotifyTracker = require('./cmd/music/spotifyAPI');
 const util = require('util');
 
 const colors = {
@@ -26,7 +26,7 @@ const hanna = new Discord.Client({
 
 hanna.queues = new Map();
 var serverOptions = {
-    'prefix': 'han!',
+    'prefix': process.env.prefix,
     'language': 'en'
 }
 
@@ -77,13 +77,14 @@ hanna.on('message', msg => {
     } else if (['clear', 'delete'].includes(cmd)) {
         if (msg.member.hasPermission("MANAGE_MESSAGES")) {
             msg.channel.messages.fetch().then(function (list) {
+                const channel = msg.channel; 
                 msg.channel.bulkDelete(args[1] ? args[1] : list);
                 messageCount = args[1] ? args[1] : list.size;
                 const embed = new Discord.MessageEmbed()
                     .setColor(colors.primary)
                     .setAuthor(hanna.user.username, hanna.user.avatarURL().toString(), hanna.user.avatarURL().toString())
                     .setDescription(`<@${msg.author.id}>\n\n✅ **${messageCount} messages deleted!**`)
-                msg.channel.send(embed);
+                channel.send(embed);
             }, function (err) { msg.channel.send("ERROR: ERROR CLEARING CHANNEL.") })
         } else {
             const embed = new Discord.MessageEmbed()
@@ -178,6 +179,8 @@ hanna.on('message', msg => {
                     q = {
                         volume: 100,
                         muted: false,
+                        nowplaying: 0,
+                        loopType: 0, // 0: None, 1: Track, 2: Queue
                         connection: connection,
                         dispatcher: null,
                         songs: []
@@ -189,7 +192,7 @@ hanna.on('message', msg => {
                     try {
                         var connection = await msg.member.voice.channel.join();
                         q.connection = connection;
-                        play(msg, q.songs[0]);
+                        play(msg, q.songs[q.nowplaying]);
                     } catch (e) {
                         hanna.queues.delete(msg.guild.id);
                         return console.error(e);
@@ -205,7 +208,7 @@ hanna.on('message', msg => {
 
     } else if (['np', 'nowplaying', 'nowplay'].includes(cmd)) {
         let q = hanna.queues.get(msg.guild.id);
-        if (q) msg.reply(q.songs[0].title);
+        if (q) msg.reply(q.songs[q.nowplaying].title);
     } else if (['disconnect', 'stop'].includes(cmd)) {
         let q = hanna.queues.get(msg.guild.id);
         if (q) {
@@ -220,6 +223,17 @@ hanna.on('message', msg => {
     } else if (['next', 'skip', 'prox', 'proxima', 'song++'].includes(cmd)) {
         let q = hanna.queues.get(msg.guild.id);
         if (q && q.songs.length > 1) {
+            q.dispatcher.end();
+        }
+    } else if (['previous', 'pre', 'back'].includes(cmd)) {
+        let q = hanna.queues.get(msg.guild.id);
+        if (!q) return;
+
+        if (q.nowplaying == 0) {
+            msg.reply('Now playing the first track on the queue');
+        } else {
+            q.nowplaying--;
+            q.nowplaying--;
             q.dispatcher.end();
         }
     } else if (['pause'].includes(cmd)) {
@@ -238,7 +252,7 @@ hanna.on('message', msg => {
         if (args[1]) {
             getLyrics(msg, args.slice(1).join(' '));
         } else if (q) {
-            getLyrics(msg, q.songs[0].title.replace(/ *\[[^\]]*]/g, '').replace(/ *\([^)]*\) */g, ''));
+            getLyrics(msg, q.songs[q.nowplaying].title.replace(/ *\[[^\]]*]/g, '').replace(/ *\([^)]*\) */g, ''));
         } else {
 
         }
@@ -248,7 +262,7 @@ hanna.on('message', msg => {
         if (q) {
             var songs = `${codeBlock}md`;
             q.songs.forEach(function (element, i) {
-                let current = i == 0 ? '\n──────────\n' : '';
+                let current = i == q.nowplaying ? '\n──────────\n' : '';
                 songs += `\n\n${current}[${element.timestamp}](${element.title.substr(0, 46)})\n${element.author.name} | ${numberSeparator(element.views)} views${current}`;
             });
             songs += `${codeBlock}`;
@@ -258,7 +272,7 @@ hanna.on('message', msg => {
                 .setTitle(`Playing next`)
                 .setAuthor(hanna.user.username, hanna.user.avatarURL().toString(), hanna.user.avatarURL().toString())
                 .setDescription(`<@${msg.author.id}>\n\n${songs}`)
-                .setThumbnail(q.songs[0].thumbnail)
+                .setThumbnail(q.songs[q.nowplaying].thumbnail)
             msg.channel.send(embed);
         }
     } else if (['mute'].includes(cmd)) {
@@ -287,11 +301,11 @@ hanna.on('message', msg => {
         } else {
             msg.reply("Hanna isn't playing on this server...");
         }
-    } else if (['shuffle', 'ramdom', 'randomize', 'rdm'].includes(cmd)) {
+    } else if (['shuffle', 'random', 'randomize', 'rdm'].includes(cmd)) {
         let q = hanna.queues.get(msg.guild.id);
         if (!q) return;
 
-        shuffle(q.songs);
+        shuffle(q.songs, q.nowplaying);
     } else {
         sendHelp(msg, cmd, null);
     }
@@ -422,8 +436,8 @@ async function play(msg, song) {
 
     q.dispatcher = q.connection.play(await ytdl(song.url, { highWaterMark: 1 << 25, filter: "audioonly" }), { type: "opus" })
         .on('finish', () => {
-            q.songs.shift();
-            play(msg, q.songs[0]);
+            q.nowplaying++;
+            play(msg, q.songs[q.nowplaying]);
         })
         .on('error', error => console.error(error));
     q.dispatcher.setVolumeLogarithmic(q.volume / 100);
