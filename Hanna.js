@@ -77,15 +77,15 @@ hanna.on('message', msg => {
     } else if (['clear', 'delete'].includes(cmd)) {
         if (msg.member.hasPermission("MANAGE_MESSAGES")) {
             msg.channel.messages.fetch().then(function (list) {
-                const channel = msg.channel; 
-                msg.channel.bulkDelete(args[1] ? args[1] : list);
+                const channel = msg.channel;
                 messageCount = args[1] ? args[1] : list.size;
                 const embed = new Discord.MessageEmbed()
                     .setColor(colors.primary)
                     .setAuthor(hanna.user.username, hanna.user.avatarURL().toString(), hanna.user.avatarURL().toString())
                     .setDescription(`<@${msg.author.id}>\n\n✅ **${messageCount} messages deleted!**`)
                 channel.send(embed);
-            }, function (err) { msg.channel.send("ERROR: ERROR CLEARING CHANNEL.") })
+                msg.channel.bulkDelete(args[1] ? args[1] : list);
+            }, function (err) { msg.channel.send("ERROR: ERROR CLEARING CHANNEL.\n" + err) })
         } else {
             const embed = new Discord.MessageEmbed()
                 .setColor(colors.primary)
@@ -170,6 +170,14 @@ hanna.on('message', msg => {
             );
         }
 
+        if (song.startsWith('https://open.spotify.com')) {
+            msg.channel.startTyping();
+            spotifyTracker.getTracks(song).then((r) => {
+                msg.reply(JSON.stringify(r).toString().substr(0, 600));
+                msg.channel.stopTyping();
+            });
+        }
+
         youtubeSearch(song, async (err, response) => {
             if (err) throw err;
             if (response && response.videos.length > 0) {
@@ -180,7 +188,8 @@ hanna.on('message', msg => {
                         volume: 100,
                         muted: false,
                         nowplaying: 0,
-                        loopType: 0, // 0: None, 1: Track, 2: Queue
+                        loopType: 0, // 0: None, 1: Queue, 2: Track
+                        nowplayingTimestamp: 0,
                         connection: connection,
                         dispatcher: null,
                         songs: []
@@ -207,6 +216,8 @@ hanna.on('message', msg => {
 
 
     } else if (['np', 'nowplaying', 'nowplay'].includes(cmd)) {
+        var a = '─────────────⦿――――――';
+
         let q = hanna.queues.get(msg.guild.id);
         if (q) msg.reply(q.songs[q.nowplaying].title);
     } else if (['disconnect', 'stop'].includes(cmd)) {
@@ -215,14 +226,13 @@ hanna.on('message', msg => {
             q.connection.disconnect();
             hanna.queues.delete(msg.guild.id);
         }
-    } else if (cmd == 'createdata') {
-        let q = hanna.queues.get(msg.guild.id);
-        fs.writeFile('./assets/data.json', q ? util.inspect(q) : JSON.stringify(hanna.queues), function (err, data) {
-            if (err) return;
-        });
     } else if (['next', 'skip', 'prox', 'proxima', 'song++'].includes(cmd)) {
         let q = hanna.queues.get(msg.guild.id);
         if (q && q.songs.length > 1) {
+            if (q.loopType == 2) {
+                q.loopType = 0;
+                msg.channel.send('Loop desativado!');
+            }
             q.dispatcher.end();
         }
     } else if (['previous', 'pre', 'back'].includes(cmd)) {
@@ -232,6 +242,10 @@ hanna.on('message', msg => {
         if (q.nowplaying == 0) {
             msg.reply('Now playing the first track on the queue');
         } else {
+            if (q.loopType == 2) {
+                q.loopType = 0;
+                msg.channel.send('Loop desativado!');
+            }
             q.nowplaying--;
             q.nowplaying--;
             q.dispatcher.end();
@@ -260,18 +274,17 @@ hanna.on('message', msg => {
         let q = hanna.queues.get(msg.guild.id);
 
         if (q) {
-            var songs = `${codeBlock}md`;
+            var songs = '';
             q.songs.forEach(function (element, i) {
-                let current = i == q.nowplaying ? '\n──────────\n' : '';
-                songs += `\n\n${current}[${element.timestamp}](${element.title.substr(0, 46)})\n${element.author.name} | ${numberSeparator(element.views)} views${current}`;
+                const content = `${(i+1).toString().padStart(2, '0')}. [${element.timestamp}] ${element.title}`.substr(0, 47)
+                songs += `${i == q.nowplaying ? '\n\n*Current ⬎*' : ''}${codeBlock}css\n${content}\n${codeBlock}${i == q.nowplaying ? '\n\n' : ''}`;
             });
-            songs += `${codeBlock}`;
 
             const embed = new Discord.MessageEmbed()
                 .setColor(colors.primary)
                 .setTitle(`Playing next`)
                 .setAuthor(hanna.user.username, hanna.user.avatarURL().toString(), hanna.user.avatarURL().toString())
-                .setDescription(`<@${msg.author.id}>\n\n${songs}`)
+                .setDescription(`<@${msg.author.id}>${songs}\n\n**⚠ Page 1/${Math.ceil(q.songs.length/10)}.** Try "${serverOptions.prefix}${cmd} *<page>*"`)
                 .setThumbnail(q.songs[q.nowplaying].thumbnail)
             msg.channel.send(embed);
         }
@@ -306,6 +319,40 @@ hanna.on('message', msg => {
         if (!q) return;
 
         shuffle(q.songs, q.nowplaying);
+    } else if (cmd.toLowerCase() === 'loop') {
+        let q = hanna.queues.get(msg.guild.id);
+        let type = args[1];
+        if (!q) return;
+
+        if (!type) {
+            if (q.loopType == 0) {
+                q.loopType = 1;
+                msg.reply('Now looping the queue');
+            } else {
+                q.loopType = 0;
+                msg.reply('Loop off');
+            }
+        } else {
+            if (['0', 'none', 'off'].includes(type)) {
+                q.loopType = 0;
+                msg.reply('Loop off');
+            } else if (['1', 'queue', 'q', 'list'].includes(type)) {
+                q.loopType = 1;
+                msg.reply('Now looping the queue. Type "'+ serverOptions.prefix +'loop track" to loop only the current song.');
+            } else if (['2', 'song', 'track'].includes(type)) {
+                q.loopType = 2;
+                msg.reply('Now looping the current track');
+            } else {
+                msg.reply('Provide a valid type')
+            }
+        }
+    } else if (['volume', 'vol'].includes(cmd)) {
+        let q = hanna.queues.get(msg.guild.id);
+        let vol = args[1];
+
+        if (!vol || vol < 0 || vol > 100) return msg.reply('Provide a valid volume');
+        q.volume = vol;
+        q.dispatcher.setVolumeLogarithmic(vol / 100);
     } else {
         sendHelp(msg, cmd, null);
     }
@@ -436,12 +483,19 @@ async function play(msg, song) {
 
     q.dispatcher = q.connection.play(await ytdl(song.url, { highWaterMark: 1 << 25, filter: "audioonly" }), { type: "opus" })
         .on('finish', () => {
-            q.nowplaying++;
-            play(msg, q.songs[q.nowplaying]);
+            let nextPlay = q.nowplaying+1;
+            if (q.loopType == 1 && !q.songs[nextPlay]) {
+                nextPlay = 0;
+            } else if (q.loopType == 2) {
+                nextPlay = q.nowplaying;
+            }
+            q.nowplaying = nextPlay;
+            play(msg, q.songs[nextPlay]);
         })
         .on('error', error => console.error(error));
     q.dispatcher.setVolumeLogarithmic(q.volume / 100);
-    msg.channel.send(`**Now playing:**\n\n${song.title}`);
+    q.nowplayingTimestamp = new Date().getHours();
+    if (q.loopType != 2) msg.channel.send(`**Now playing:**\n\n${song.title}`);
 }
 
 async function getLyrics(msg, query) {
